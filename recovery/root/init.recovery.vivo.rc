@@ -1,0 +1,140 @@
+#init.rc for vivo
+
+on init
+    export PATH /sbin:/system/bin
+    export ANDROID_ROOT /system
+    export ANDROID_DATA /data
+    export EXTERNAL_STORAGE /sdcard
+
+    symlink /system/etc /etc
+    symlink /sbin/toybox /sbin/cat
+    symlink /sbin/toybox /sbin/ln
+    symlink /sbin/toybox /sbin/ls
+    symlink /sbin/toybox /sbin/mkdir
+    symlink /sbin/vivotool /sbin/ping
+    symlink /sbin/toybox /sbin/ps
+    symlink /sbin/toybox /sbin/grep
+    symlink /sbin/toybox /sbin/chmod
+    symlink /sbin/toybox /sbin/setprop
+    symlink /sbin/toybox /sbin/getprop
+    symlink /sbin/toybox /sbin/setenforce
+    symlink /sbin/toybox /sbin/mount
+    symlink /sbin/toybox /sbin/rm
+    symlink /sbin/toybox /sbin/gunzip
+    symlink /sbin/toybox /sbin/tar
+    symlink /sbin/toybox /sbin/chown
+
+    mkdir /oem 0771 system system
+    mkdir /otg
+    mkdir /system
+    mkdir /system_root/system
+
+    symlink /vendor/lib64/hw/libMcGatekeeper.so   /vendor/lib64/hw/gatekeeper.${ro.hardware}.so
+    symlink /vendor/lib64/hw/libMcTeeKeymaster.so /vendor/lib64/hw/keystore.${ro.hardware}.so
+    symlink /sbin /system_root/system/bin
+    symlink /sbin/linker /system_root/system/bin/linker
+    symlink /sbin/linker64 /system_root/system/bin/linker64
+    symlink /sbin/sh /system_root/system/bin/sh
+    symlink /sbin/debuggerd64 /system_root/system/bin/debuggerd64
+
+    mkdir /sbin/lib
+    mkdir /sbin/lib64
+    symlink /sbin/lib  /system_root/system/lib
+    symlink /sbin/lib64 /system_root/system/lib64
+
+    #create mountpoint for /mnt/vendor/persist partition
+    mkdir /mnt/vendor/persist 0771 system system
+
+    symlink /mnt/vendor/persist /vendor/persist
+    chmod 0770 /sbin/sh
+
+on post-fs
+    chown system system /mnt/vendor/persist
+    chmod 0771 /mnt/vendor/persist
+
+    # We restorecon /mnt/vendor/persist to set SEPolicy label.
+    restorecon /mnt/vendor/persist
+
+    # Create mcRegistry to store failure record
+    mkdir /mnt/vendor/persist/mcRegistry 0771 system system
+
+    write /proc/bootprof "MOBICORE: Starting mcDriverDaemon"
+    start mobicore
+
+on post-fs-data
+    # Create /data/vendor/key_provisioning dir and get proper encryption policy installed
+    # Key Installation
+    mkdir /data/vendor/key_provisioning 0771 system system
+
+on fs
+    #mount ext4 /dev/block/platform/bootdevice/by-name/vendor /vendor rw
+    wait /dev/block/platform/bootdevice/by-name/cust
+    mount ext4 /dev/block/platform/bootdevice/by-name/cust /oem ro
+
+on property:property.oem.load=1
+    load_system_props
+
+service debuggerd64 /system/bin/debuggerd64
+    group root readproc
+    writepid /dev/cpuset/system-background/tasks
+    seclabel u:r:recovery:s0
+
+service keymaster-3-0 /sbin/android.hardware.keymaster@3.0-service
+    disabled
+    user root
+    group root drmrpc
+    seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /sbin/android.hardware.gatekeeper@1.0-service
+    disabled
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
+service servicemanager /sbin/servicemanager
+    disabled
+    user root
+    seclabel u:r:recovery:s0
+
+service hwservicemanager /sbin/hwservicemanager
+    disabled
+    user root
+    onrestart setprop hwservicemanager.ready false
+    onrestart class_restart hal
+    onrestart class_restart early_hal
+    writepid /dev/cpuset/system-background/tasks
+    seclabel u:r:recovery:s0
+
+service logd /sbin/logd
+    socket logd stream 0666 logd logd
+    socket logdr seqpacket 0666 logd logd
+    socket logdw dgram 0222 logd logd
+    seclabel u:r:recovery:s0
+
+on property:recovery.service=1
+    start servicemanager
+    start hwservicemanager
+    start keymaster-3-0
+    start gatekeeper-1-0
+
+# Start Daemon (Registry directories should already be present)
+service mobicore /vendor/bin/mcDriverDaemon --P1 /mnt/vendor/persist/mcRegistry \
+	-r /vendor/app/mcRegistry/06090000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/020f0000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/05120000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/070b0000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/020b0000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/05070000000000000000000000000000.drbin \
+	-r /vendor/app/mcRegistry/030b0000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/03100000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/030c0000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/07070000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/5020170115e016302017012521300000.drbin \
+ 	-r /vendor/app/mcRegistry/40188311faf343488db888ad39496f9a.drbin \
+ 	-r /vendor/app/mcRegistry/070c0000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/090b0000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/0f5eed3c3b5a47afacca69a84bf0efad.drbin \
+ 	-r /vendor/app/mcRegistry/07060000000000000000000000007169.drbin \
+ 	-r /vendor/app/mcRegistry/07070000000000000000000000000000.drbin \
+ 	-r /vendor/app/mcRegistry/07407000000000000000000000000000.drbin
+    seclabel u:r:recovery:s0
